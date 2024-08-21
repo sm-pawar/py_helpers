@@ -1,3 +1,6 @@
+# Changing the original script to covert the SODA-A lables to YOLO format
+
+
 # Copyright (c) OpenMMLab. All rights reserved.
 # Written by jbwang1997
 # Reference: https://github.com/jbwang1997/BboxToolkit
@@ -375,7 +378,24 @@ def crop_and_save_img(info, windows, window_anns, img_dir, no_padding,
         patch_info['annotations'] = annotations
         patch_info['categories'] = categories
 
-        json.dump(patch_info, open(outdir, 'w'), indent=4)
+        #json.dump(patch_info, open(outdir, 'w'), indent=4)
+        
+        #Change this part to convert the labels to YOLO format
+        
+
+        text_list = [f'''{int(patch_info['ann']['cat_ids'][i])} {int(patch_info["ann"]["polys"][i][0])/patch_info['width']} {int(patch_info["ann"]["polys"][i][1])/patch_info['height']}  
+                                                        {int(patch_info["ann"]["polys"][i][2])/patch_info['width']} {int(patch_info["ann"]["polys"][i][3])/patch_info['height']}  
+                                                        {int(patch_info["ann"]["polys"][i][4])/patch_info['width']} {int(patch_info["ann"]["polys"][i][7])/patch_info['height']}  
+                                                        {int(patch_info["ann"]["polys"][i][6])/patch_info['width']} {int(patch_info["ann"]["polys"][i][7])/patch_info['height']}''' 
+                for i in range(polys_num)
+                ]
+                
+        
+        
+        txt_ann = outdir.replace('.json', '.txt')
+        with codecs.open(txt_ann, 'w', 'utf-8') as f:
+            for row in text_list:
+                f.write(row + '\n')   
 
     return patch_infos
 
