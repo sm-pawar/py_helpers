@@ -383,10 +383,7 @@ def crop_and_save_img(info, windows, window_anns, img_dir, no_padding,
         #Change this part to convert the labels to YOLO format
         
 
-        text_list = [f'''{int(patch_info['ann']['cat_ids'][i])} {int(patch_info["ann"]["polys"][i][0])/patch_info['width']} {int(patch_info["ann"]["polys"][i][1])/patch_info['height']}  
-                                                        {int(patch_info["ann"]["polys"][i][2])/patch_info['width']} {int(patch_info["ann"]["polys"][i][3])/patch_info['height']}  
-                                                        {int(patch_info["ann"]["polys"][i][4])/patch_info['width']} {int(patch_info["ann"]["polys"][i][7])/patch_info['height']}  
-                                                        {int(patch_info["ann"]["polys"][i][6])/patch_info['width']} {int(patch_info["ann"]["polys"][i][7])/patch_info['height']}''' 
+        text_list = [f'''{int(patch_info['ann']['cat_ids'][i])} {int(patch_info["ann"]["polys"][i][0])/patch_info['width']} {int(patch_info["ann"]["polys"][i][1])/patch_info['height']} {int(patch_info["ann"]["polys"][i][2])/patch_info['width']} {int(patch_info["ann"]["polys"][i][3])/patch_info['height']} {int(patch_info["ann"]["polys"][i][4])/patch_info['width']} {int(patch_info["ann"]["polys"][i][7])/patch_info['height']} {int(patch_info["ann"]["polys"][i][6])/patch_info['width']} {int(patch_info["ann"]["polys"][i][7])/patch_info['height']}''' 
                 for i in range(polys_num)
                 ]
                 
