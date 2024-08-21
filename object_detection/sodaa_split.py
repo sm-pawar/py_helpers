@@ -374,7 +374,7 @@ def crop_and_save_img(info, windows, window_anns, img_dir, no_padding,
                  trunc=1 if patch_info['ann']['trunc'][i] else 0)
             for i in range(polys_num)
         ]
-        patch_info.pop('ann')
+        
         patch_info['annotations'] = annotations
         patch_info['categories'] = categories
 
@@ -397,6 +397,7 @@ def crop_and_save_img(info, windows, window_anns, img_dir, no_padding,
             for row in text_list:
                 f.write(row + '\n')   
 
+        patch_info.pop('ann')
     return patch_infos
 
 
