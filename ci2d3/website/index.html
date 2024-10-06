@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CI2D3 Ice Islands with Custom Basemap</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+
+    <!-- Custom Styles for Formatting -->
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+        }
+        #map {
+            height: 100vh;
+            width: 100%;
+        }
+        h1 {
+            text-align: center;
+            margin: 20px 0;
+            font-size: 24px;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <h1>CI2D3 Ice Islands and Custom Basemap</h1>
+
+    <div id="map"></div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+
+    <script>
+        // Initialize the map and set its view (Center on Canada's northern area for Ice Islands)
+        var map = L.map('map').setView([75.0, -100.0], 4);
+
+        // Add custom basemap layer (Canada's Basemap from GeoGratis WMS)
+        var basemap = L.tileLayer.wms('https://maps.geogratis.gc.ca/wms/canvec_en?', {
+            layers: 'canvec',
+            format: 'image/png',
+            transparent: true,
+            attribution: "&copy; Government of Canada, GeoGratis"
+        }).addTo(map);
+
+        // Add CI2D3 Ice Islands WMS layer
+        var ci2d3Layer = L.tileLayer.wms('http://localhost:8080/geoserver/ci2d3/wms?', {
+            layers: 'ci2d3:CCIN12678_20181113_CI2D3_01',  // Replace with actual CI2D3 ice islands layer
+            format: 'image/png',
+            transparent: true,
+            attribution: "CI2D3 Data"
+        }).addTo(map);
+
+    </script>
+</body>
+</html>
