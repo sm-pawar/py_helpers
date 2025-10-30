@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Leaflet WMS + GetFeatureInfo + CQL Filter</title>
+    <!-- Proj4js for projection definitions -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+  
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+  
+  <!-- Proj4Leaflet for custom CRS support -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4leaflet/1.0.2/proj4leaflet.min.js"></script>
+  
+  <!-- Tailwind Play CDN for single-file usage -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-sA+q1k7tQq1Xg+8q0Qpq5H8oFQq2ZV3b4aV7Y9g3kQc=" crossorigin="" />
+  <style>
+    /* small custom adjustments for leaflet container inside flex layout */
+    #map { height: 100%; min-height: 420px; }
+    /* popup inner scroll */
+    .attrs-list { max-height: 60vh; overflow:auto; }
+  </style>
+</head>
+<body class="antialiased bg-slate-50 h-screen">
+  <div class="flex h-full">
+    <!-- Left: Map -->
+    <div id="map" class="flex-1"></div>
+
+    <!-- Right: Sidebar -->
+    <aside id="sidebar" class="w-96 bg-white border-l shadow-lg p-4 hidden md:block">
+      <h2 class="text-xl font-semibold mb-2">Layer Controls</h2>
+
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 mb-1">Attribute</label>
+        <select id="attrSelect" class="block w-full rounded p-2 border">
+          <option value="">Loading attributes...</option>
+        </select>
+      </div>
+
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 mb-1">Operator</label>
+        <select id="opSelect" class="block w-full rounded p-2 border">
+          <option value="=">= (equal)</option>
+          <option value=">">&gt; (greater than)</option>
+          <option value="<">&lt; (less than)</option>
+        </select>
+      </div>
+
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 mb-1">Value</label>
+        <input id="valueInput" type="text" placeholder="Enter value" class="block w-full rounded p-2 border" />
+      </div>
+
+      <div class="flex gap-2">
+        <button id="applyFilter" class="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">Apply Filter</button>
+        <button id="clearFilter" class="px-3 py-2 bg-gray-200 rounded">Clear</button>
+      </div>
+
+      <hr class="my-4" />
+
+      <h3 class="text-lg font-medium mb-2">Feature Info</h3>
+      <p class="text-sm text-gray-600 mb-2">Click anywhere on the map to query feature attributes.</p>
+      <div id="featurePanel" class="attrs-list border rounded p-2 bg-slate-50 text-sm text-slate-800">
+        <em>No feature selected.</em>
+      </div>
+
+      <div class="mt-4 text-xs text-gray-500">
+        <p>WMS endpoint: <code class="break-words">http://34.203.14.52/geoserver/ci2d3/wms</code></p>
+        <p>Layer: <code>ci2d3:ci2d3_v1_5937</code></p>
+      </div>
+    </aside>
+
+    <!-- Mobile bottom panel (visible on small screens) -->
+    <div id="mobilePanel" class="fixed bottom-4 left-1/2 -translate-x-1/2 w-[95%] md:hidden">
+      <div class="bg-white border rounded p-3 shadow">
+        <div class="flex items-center justify-between">
+          <div class="text-sm font-medium">Layer Controls</div>
+          <button id="openSidebarMobile" class="text-xs text-indigo-600">Open</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Offcanvas for mobile: will reuse sidebar content behavior -->
+  <div id="mobileOffcanvas" class="fixed inset-0 bg-black/40 hidden z-50">
+    <div class="absolute right-0 top-0 bottom-0 w-11/12 max-w-md bg-white p-4 overflow-auto">
+      <button id="closeMobileOffcanvas" class="text-sm text-gray-600 mb-2">Close</button>
+      <div id="mobileContent"></div>
+    </div>
+  </div>
+
+    <!-- Proj4js for projection definitions -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+  
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+  
+  <!-- Proj4Leaflet for custom CRS support -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4leaflet/1.0.2/proj4leaflet.min.js"></script>
+  
+  <script>
+    // Wrap app logic in DOMContentLoaded to be extra-safe
+    document.addEventListener('DOMContentLoaded', () => {
+      if(typeof L === 'undefined'){
+        document.getElementById('featurePanel').innerHTML = '<div class="text-red-600">Leaflet (L) failed to load. Check your network or move the Leaflet script into the page.</div>';
+        console.error('Leaflet (L) is not defined.');
+        return;
+      }
+
+      // Configuration
+      const WMS_BASE = 'http://34.203.14.52/geoserver/ci2d3/wms';
+      const LAYER_NAME = 'ci2d3:ci2d3_v1_5937';
+      const WFS_BASE = 'http://34.203.14.52/geoserver/ci2d3/ows'; // used for attribute discovery/sample
+
+      // Initialize map
+      const map = L.map('map').setView([0, 0], 2);
+
+      // Add OpenStreetMap base
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap contributors'
+      }).addTo(map);
+
+      // WMS layer (tile) - use transparent PNG
+      const wmsLayer = L.tileLayer.wms(WMS_BASE, {
+        layers: LAYER_NAME,
+        format: 'image/png',
+        transparent: true,
+        version: '1.1.1',
+        attribution: 'GeoServer WMS'
+      }).addTo(map);
+
+      // Highlight layer for selected feature (GeoJSON)
+      const highlightLayer = L.geoJSON(null, {
+        style: { color: '#ff0000', weight: 3 },
+        pointToLayer: function(feature, latlng){
+          return L.circleMarker(latlng, { radius: 8, weight:2 });
+        }
+      }).addTo(map);
+
+      // UI elements
+      const attrSelect = document.getElementById('attrSelect');
+      const opSelect = document.getElementById('opSelect');
+      const valueInput = document.getElementById('valueInput');
+      const applyFilter = document.getElementById('applyFilter');
+      const clearFilter = document.getElementById('clearFilter');
+      const featurePanel = document.getElementById('featurePanel');
+
+      const mobileOffcanvas = document.getElementById('mobileOffcanvas');
+      const mobileContent = document.getElementById('mobileContent');
+      document.getElementById('openSidebarMobile').addEventListener('click', ()=>{
+        // Clone sidebar content for mobile to avoid duplicate IDs causing issues
+        mobileContent.innerHTML = '';
+        const clone = document.getElementById('sidebar').cloneNode(true);
+        // Remove the 'hidden md:block' classes so content shows in mobile drawer
+        clone.classList.remove('hidden');
+        clone.classList.remove('md:block');
+        mobileContent.appendChild(clone);
+        mobileOffcanvas.classList.remove('hidden');
+      });
+      document.getElementById('closeMobileOffcanvas').addEventListener('click', ()=> mobileOffcanvas.classList.add('hidden'));
+
+      // Helper: safe fetch JSON
+      async function fetchJson(url){
+        const res = await fetch(url);
+        if(!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+        return res.json();
+      }
+
+      // Discover attributes by requesting one sample feature via WFS (GeoJSON)
+      async function loadAttributes(){
+        try{
+          const url = new URL(WFS_BASE);
+          url.searchParams.set('service','WFS');
+          url.searchParams.set('version','1.0.0');
+          url.searchParams.set('request','GetFeature');
+          url.searchParams.set('typeName', LAYER_NAME);
+          url.searchParams.set('maxFeatures','1');
+          url.searchParams.set('outputFormat','application/json');
+
+          const data = await fetchJson(url.toString());
+          let props = {};
+          if(data.features && data.features.length){
+            props = data.features[0].properties || {};
+          }
+
+          populateAttrOptions(Object.keys(props));
+        }catch(err){
+          console.warn('Could not fetch sample attributes:', err);
+          // fallback: let user type attribute name manually
+          populateAttrOptions([]);
+        }
+      }
+
+      function populateAttrOptions(keys){
+        attrSelect.innerHTML = '';
+        const blankOpt = document.createElement('option');
+        blankOpt.value = '';
+        blankOpt.textContent = keys.length ? 'Select attribute...' : 'Type attribute name...';
+        attrSelect.appendChild(blankOpt);
+
+        for(const k of keys){
+          const opt = document.createElement('option');
+          opt.value = k;
+          opt.textContent = k;
+          attrSelect.appendChild(opt);
+        }
+
+        if(keys.length===0){
+          const manual = document.createElement('option');
+          manual.value = '__manual__';
+          manual.textContent = 'Enter attribute name manually';
+          attrSelect.appendChild(manual);
+        }
+      }
+
+      // Compose CQL filter string safely
+      function buildCql(attr, op, val, sampleProps=null){
+        if(!attr || attr === '__manual__') return null;
+        // Determine if numeric
+        const sampleVal = sampleProps && sampleProps[attr];
+        let numeric = false;
+        if(sampleVal !== undefined && sampleVal !== null){
+          numeric = typeof sampleVal === 'number' || (!isNaN(parseFloat(sampleVal)) && isFinite(sampleVal));
+        } else {
+          // fallback: test value
+          numeric = !isNaN(parseFloat(val)) && isFinite(val);
+        }
+
+        // For strings use single quotes, escape single quotes inside value
+        if(!numeric){
+          if(op === '=' ){
+            return `${attr} = '${val.replace(/'/g, "''")}'`;
+          } else {
+            // > or < on strings — warn but still attempt lexicographic compare
+            return `${attr} ${op} '${val.replace(/'/g, "''")}'`;
+          }
+        } else {
+          return `${attr} ${op} ${val}`;
+        }
+      }
+
+      // Apply filter to WMS layer using CQL_FILTER
+      function applyCqlFilterString(cql){
+        if(!cql){
+          alert('No filter specified.');
+          return;
+        }
+        wmsLayer.setParams({ CQL_FILTER: cql });
+        wmsLayer.redraw();
+      }
+
+      // Clear filter
+      function clearCqlFilter(){
+        wmsLayer.setParams({ CQL_FILTER: null });
+        wmsLayer.redraw();
+        valueInput.value = '';
+        attrSelect.value = '';
+      }
+
+      // Attach events for filter buttons
+      applyFilter.addEventListener('click', async ()=>{
+        const attr = attrSelect.value;
+        const op = opSelect.value;
+        const val = valueInput.value.trim();
+        if(!attr || !val){
+          alert('Please select an attribute and enter a value.');
+          return;
+        }
+
+        // Try to fetch a sample feature to detect type
+        let sampleProps = null;
+        try{
+          const url = new URL(WFS_BASE);
+          url.searchParams.set('service','WFS');
+          url.searchParams.set('version','1.0.0');
+          url.searchParams.set('request','GetFeature');
+          url.searchParams.set('typeName', LAYER_NAME);
+          url.searchParams.set('maxFeatures','1');
+          url.searchParams.set('outputFormat','application/json');
+          const data = await fetchJson(url.toString());
+          if(data.features && data.features.length) sampleProps = data.features[0].properties || {};
+        }catch(e){ /* ignore */ }
+
+        const cql = buildCql(attr, op, val, sampleProps);
+        if(!cql){ alert('Could not build CQL filter — check attribute name.'); return; }
+        applyCqlFilterString(cql);
+      });
+
+      clearFilter.addEventListener('click', ()=> clearCqlFilter());
+
+      // Map click -> GetFeatureInfo
+      map.on('click', async function(e){
+        try{
+          const size = map.getSize();
+          const bounds = map.getBounds();
+          const sw = bounds.getSouthWest();
+          const ne = bounds.getNorthEast();
+          // Use WMS 1.1.1 (SRS=EPSG:4326) — provide BBOX in lon/lat order
+          const bbox = [sw.lng, sw.lat, ne.lng, ne.lat].join(',');
+
+          // pixel coordinate
+          const point = map.latLngToContainerPoint(e.latlng);
+          const i = Math.round(point.x);
+          const j = Math.round(point.y);
+
+          const params = new URLSearchParams({
+            service: 'WMS',
+            version: '1.1.1',
+            request: 'GetFeatureInfo',
+            layers: LAYER_NAME,
+            query_layers: LAYER_NAME,
+            styles: '',
+            bbox: bbox,
+            width: size.x,
+            height: size.y,
+            srs: 'EPSG:4326',
+            format: 'image/png',
+            info_format: 'application/json',
+            x: i,
+            y: j
+          });
+
+          const url = `${WMS_BASE}?${params.toString()}`;
+          const res = await fetch(url);
+          if(!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+          const info = await res.json();
+
+          displayFeatureInfo(info, e.latlng);
+
+        }catch(err){
+          console.error('GetFeatureInfo error', err);
+          featurePanel.innerHTML = `<div class="text-red-600">Query failed: ${err.message}</div>`;
+        }
+      });
+
+      // Display feature info in the right panel and highlight feature if geometry returned
+      function displayFeatureInfo(info, clickedLatLng){
+        highlightLayer.clearLayers();
+
+        if(!info || !info.features || info.features.length===0){
+          featurePanel.innerHTML = `<div class="text-sm">No feature at this location.</div>`;
+          return;
+        }
+
+        // Take first feature
+        const feat = info.features[0];
+        const props = feat.properties || {};
+
+        // Build HTML
+        let html = `<div class="mb-2"><strong>Feature attributes</strong></div>`;
+        html += '<div class="attrs-list">';
+        html += '<table class="w-full text-sm">';
+        for(const k of Object.keys(props)){
+          html += `<tr class="border-b"><td class="py-1 font-medium">${escapeHtml(k)}</td><td class="py-1 pl-2 break-words">${escapeHtml(String(props[k]))}</td></tr>`;
+        }
+        html += '</table></div>';
+
+        // If geometry provided in GeoJSON, add to highlight layer
+        if(feat.geometry){
+          try{
+            highlightLayer.addData(feat);
+            // zoom to feature bounds (small padding)
+            const b = highlightLayer.getBounds();
+            if(b.isValid()) map.fitBounds(b.pad(1.2));
+          }catch(e){
+            console.warn('Could not add geometry to highlight layer', e);
+          }
+        } else {
+          // No geometry returned — add a marker at clicked point
+          L.circleMarker(clickedLatLng, { radius:6, color:'#ff0000' }).addTo(highlightLayer);
+        }
+
+        featurePanel.innerHTML = html;
+
+        // On small screens, show the offcanvas
+        if(window.innerWidth < 768){
+          mobileOffcanvas.classList.remove('hidden');
+        }
+      }
+
+      // Basic HTML escaping
+      function escapeHtml(unsafe){
+        return unsafe
+          .replaceAll('&','&amp;')
+          .replaceAll('<','&lt;')
+          .replaceAll('>','&gt;')
+          .replaceAll('"','&quot;')
+          .replaceAll("'","&#039;");
+      }
+
+      // Initial load: attributes and set initial map view to layer bounds if possible
+      (async function init(){
+        await loadAttributes();
+
+        // Try to get layer bounds from WMS GetCapabilities? Fallback to zooming to a reasonable area.
+        // For simplicity, set view to a global extents; user can zoom manually.
+        map.setView([0, 0], 2);
+      })();
+
+      // Accessibility: allow Enter on value input to apply
+      valueInput.addEventListener('keydown', (ev)=>{ if(ev.key==='Enter'){ applyFilter.click(); } });
+
+    });
+  </script>
+</body>
+</html>
